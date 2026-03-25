@@ -3,7 +3,7 @@
 > An AI-powered Snake game enhanced with Gemini, enabling dynamic level generation, adaptive difficulty, and real-time gameplay insights based on user intent.
 > The game evolves from a static rule-based system into an intelligent, adaptive experience where AI continuously personalizes environments, strategy, and gameplay in real time.
 
-[![Live Demo](https://img.shields.io/badge/Live%20Demo-Vercel-black?logo=vercel)](https://your-vercel-url.vercel.app)
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Vercel-black?logo=vercel)](https://gem-slither.vercel.app/)
 [![Built with Gemini](https://img.shields.io/badge/Google-Gemini%202.5%20Flash-blue?logo=google)](https://ai.google.dev)
 [![React](https://img.shields.io/badge/React-18-61DAFB?logo=react)](https://react.dev)
 [![Vite](https://img.shields.io/badge/Vite-5-646CFF?logo=vite)](https://vitejs.dev)
