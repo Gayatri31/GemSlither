@@ -769,6 +769,28 @@ export default function AISnake() {
 
   const th = THEMES[ui.theme] || THEMES.jungle;
 
+  // ── Viewport scaling — fit entire game to screen width ───────────────────
+  const wrapRef = useRef(null);
+  const GAME_W = 1160; // total design width: panels (205×2) + canvas (720) + gaps (30)
+
+  useEffect(() => {
+    function applyScale() {
+      if (!wrapRef.current) return;
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const scaleX = vw / GAME_W;
+      const scale  = Math.min(scaleX, 1); // never upscale, only shrink
+      wrapRef.current.style.transform      = `scale(${scale})`;
+      wrapRef.current.style.transformOrigin = "top center";
+      // Adjust outer container height to match scaled content
+      const scaledH = wrapRef.current.scrollHeight * scale;
+      wrapRef.current.parentElement.style.height = scaledH + "px";
+    }
+    applyScale();
+    window.addEventListener("resize", applyScale);
+    return () => window.removeEventListener("resize", applyScale);
+  }, []);
+
   const panelStyle = {
     width: 205,
     display: "flex",
@@ -794,45 +816,51 @@ export default function AISnake() {
   const divider = { borderTop: "1px solid rgba(0,170,255,0.08)", marginTop: 4, paddingTop: 10 };
 
   return (
+    // ── Outer shell — full viewport, dark bg, no scroll ──────────────────────
     <div style={{
-      minHeight: "100vh",
       width: "100vw",
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "center",
-      justifyContent: "center",
       background: "#02080c",
-      fontFamily: "'Courier New', monospace",
-      padding: "12px 16px",
-      userSelect: "none",
-      gap: 10,
-      overflowX: "hidden",
+      overflow: "hidden",
+      display: "flex",
+      justifyContent: "center",
     }}>
+      {/* ── Inner game wrapper — fixed design width, scales down on small screens ── */}
+      <div ref={wrapRef} style={{
+        width: GAME_W,
+        flexShrink: 0,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        fontFamily: "'Courier New', monospace",
+        padding: "14px 10px",
+        userSelect: "none",
+        gap: 10,
+        background: "#02080c",
+      }}>
 
       {/* ── TITLE BAR ── */}
       <div style={{
-        display: "flex", alignItems: "center", gap: 16,
-        padding: "8px 32px",
+        padding: "8px 40px",
         background: "rgba(3,12,22,0.98)",
         border: "1px solid rgba(0,170,255,0.35)",
         borderRadius: 10,
         boxShadow: "0 0 32px rgba(0,170,255,0.18), 0 0 0 1px rgba(0,0,0,0.8), inset 0 1px 0 rgba(0,170,255,0.12)",
+        textAlign: "center",
       }}>
-        <div style={{ textAlign: "center" }}>
-          <div style={{
-            fontSize: 28, fontWeight: 900, letterSpacing: 8,
-            color: "#ffffff",
-            textShadow: "0 0 20px #00aaff, 0 0 50px rgba(0,150,255,0.3)",
-          }}>GemSlither</div>
-          <div style={{
-            fontSize: 8, letterSpacing: 4, color: "#1a6688",
-            marginTop: -2, textTransform: "uppercase",
-          }}>Slither. Sparkle. Survive</div>
-        </div>
+        <div style={{
+          fontSize: 28, fontWeight: 900, letterSpacing: 8,
+          color: "#ffffff",
+          textShadow: "0 0 20px #00aaff, 0 0 50px rgba(0,150,255,0.3)",
+        }}>GemSlither</div>
+        <div style={{
+          fontSize: 8, letterSpacing: 4, color: "#1a6688",
+          marginTop: -2, textTransform: "uppercase",
+        }}>Slither. Sparkle. Survive.</div>
       </div>
 
       {/* ── THREE COLUMNS ── */}
-      <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+      <div style={{ display: "flex", gap: 10, alignItems: "flex-start", width: "100%" }}>
 
         {/* LEFT PANEL */}
         <div style={panelStyle}>
@@ -1047,6 +1075,7 @@ export default function AISnake() {
           </div>
         </div>
       </div>
+      {/* end three columns */}
 
       {/* ── D-PAD + CONTROLS ── */}
       <div style={{
@@ -1097,6 +1126,10 @@ export default function AISnake() {
           </button>
         </div>
       </div>
+      {/* end D-pad bar */}
+
+      </div>
+      {/* end wrapRef inner */}
 
     </div>
   );
