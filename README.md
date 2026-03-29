@@ -2,7 +2,7 @@
 
 > An AI-powered Snake game where **Google Gemini 2.5 Flash** acts as a live game master — generating dynamic levels, enemies, themes, and tactical insights from natural language prompts.
 
-[![Live Demo](https://img.shields.io/badge/Live%20Demo-Vercel-black?logo=vercel)](https://your-vercel-url.vercel.app)
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Vercel-black?logo=vercel)](https://gem-slither.vercel.app/)
 [![Gemini](https://img.shields.io/badge/Google-Gemini%202.5%20Flash-blue?logo=google)](https://ai.google.dev)
 [![Firebase](https://img.shields.io/badge/Google-Firebase-orange?logo=firebase)](https://firebase.google.com)
 [![React](https://img.shields.io/badge/React-18-61DAFB?logo=react)](https://react.dev)
@@ -78,11 +78,7 @@ Rules enforce data validation at the database level — not just client-side:
       ".read": true,
       ".write": true,
       "$entry": {
-        ".validate": "newData.hasChildren(['name','score','theme','timestamp'])
-          && newData.child('name').val().length <= 20
-          && newData.child('score').val() >= 0
-          && newData.child('score').val() <= 10000
-          && newData.child('timestamp').isNumber()"
+        ".validate": "newData.hasChildren(['name','score','theme','timestamp']) && newData.child('name').isString() && newData.child('name').val().length <= 20 && newData.child('score').isNumber() && newData.child('score').val() >= 0 && newData.child('score').val() <= 10000 && newData.child('theme').isString() && newData.child('timestamp').isNumber()"
       }
     }
   }
@@ -181,4 +177,4 @@ gemslither/
 
 ---
 
-Built for the **Google Antigravity Hackathon** · Game Vertical · March 2026
+Built for the **PromptWarsVirtual using Google Antigravity** · Game Vertical · March 2026
