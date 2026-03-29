@@ -1,10 +1,10 @@
-# 🐍 GemSlither — Slither. Sparkle. Survive
+# 🐍 GemSlither — Slither. Sparkle. Survive.
 
-> An AI-powered Snake game enhanced with Gemini, enabling dynamic level generation, adaptive difficulty, and real-time gameplay insights based on user intent.
-> The game evolves from a static rule-based system into an intelligent, adaptive experience where AI continuously personalizes environments, strategy, and gameplay in real time.
+> An AI-powered Snake game where **Google Gemini 2.5 Flash** acts as a live game master — generating dynamic levels, enemies, themes, and tactical insights from natural language prompts.
 
-[![Live Demo](https://img.shields.io/badge/Live%20Demo-Vercel-black?logo=vercel)](https://gem-slither.vercel.app/)
-[![Built with Gemini](https://img.shields.io/badge/Google-Gemini%202.5%20Flash-blue?logo=google)](https://ai.google.dev)
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Vercel-black?logo=vercel)](https://your-vercel-url.vercel.app)
+[![Gemini](https://img.shields.io/badge/Google-Gemini%202.5%20Flash-blue?logo=google)](https://ai.google.dev)
+[![Firebase](https://img.shields.io/badge/Google-Firebase-orange?logo=firebase)](https://firebase.google.com)
 [![React](https://img.shields.io/badge/React-18-61DAFB?logo=react)](https://react.dev)
 [![Vite](https://img.shields.io/badge/Vite-5-646CFF?logo=vite)](https://vitejs.dev)
 
@@ -14,68 +14,79 @@
 
 ---
 
+## 🌟 Google Services Used
+
+| Service | How It's Used |
+|---|---|
+| **Gemini 2.5 Flash** | Level generation — obstacles, rivers, enemies, theme, tactical insight from natural language |
+| **Firebase Realtime Database** | Global leaderboard — save and display top 10 scores across all players |
+| **Firebase Analytics** | In-game event tracking — game_start, game_over, level_generated, score_saved |
+| **Google Analytics GA4** | Page-level analytics via gtag.js in index.html |
+| **Google Fonts** | `Orbitron` (title) + `Share Tech Mono` (UI panels) — loaded via Google Fonts CDN |
+
+---
+
 ## ✨ Features
 
 | Feature | Description |
 |---|---|
-| 🤖 **AI Level Generator** | Describe any level in natural language — Gemini 2.5 Flash generates obstacles, water, plants, enemies, and a theme |
-| 🌍 **4 Visual Themes** | Jungle (rivers + ferns), Volcanic (lava + boulders), Crystal Cave (shards + pools), Desert (sandstone + cacti) |
-| 🎨 **Sprite-style Canvas Art** | Animated water ripples, swaying plants, articulated snake with tongue flick, particle bursts |
-| 👾 **Roaming Enemies** | Patrol AI enemies that change direction when blocked |
+| 🤖 **AI Level Generator** | Describe any world in natural language — Gemini builds it in ~2 seconds |
+| 🌍 **4 Visual Themes** | Jungle, Volcanic, Crystal Cave, Desert — each with unique sprite art |
+| 🎨 **Canvas 2D Sprites** | Animated water ripples, swaying plants, articulated snake with tongue flick |
+| 👾 **Roaming Enemies** | Patrol AI that changes direction when blocked |
 | ⚡ **Adaptive Difficulty** | Speed increases every 50 points |
-| 💡 **Gemini Insight** | AI-generated tactical tip per level |
-| 📱 **Mobile Controls** | On-screen D-pad for touch devices |
-| 🔑 **Secure API Key** | Loaded from `.env` — never committed to git |
+| 🏆 **Global Leaderboard** | Firebase-powered top 10 scores with player names |
+| 📊 **Analytics** | GA4 + Firebase Analytics tracking every key game event |
+| ♿ **Accessibility** | ARIA labels, live score announcer, keyboard-first, focus-visible rings |
+| 📱 **Mobile Ready** | Touch D-pad, viewport scaling |
 
 ---
 
 ## 🧠 Approach & Logic
 
 ### AI Integration — Google Gemini 2.5 Flash
+One POST to `generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent` returns structured JSON with `responseMimeType: "application/json"`. `thinkingBudget: 0` disables reasoning mode so all tokens go directly to output.
 
-The game calls `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent` when the player clicks **Generate Level**.
+### Firebase Leaderboard
+After game over, players enter their name and save their score to Firebase Realtime Database. The leaderboard modal fetches and displays the top 10 scores globally, ordered by score descending.
 
-Gemini returns structured JSON with `responseMimeType: "application/json"` containing obstacle positions, water tile clusters, plant positions, enemy configs, a visual theme, and a tactical tip. `thinkingBudget: 0` disables the reasoning chain to maximise output tokens for dense JSON.
-
-### Fallback — Procedural Default Levels
-
-Every theme has a hand-crafted procedural level via `generateDefaultLevel(theme)` using a seeded PRNG. The game is fully playable without an API key.
-
-### Decision Making
-
-- **Spawn zone protection** — a 7×7 zone around the snake spawn is always obstacle-free
-- **Enemy AI** — moves every N ticks, randomises direction when blocked
-- **Speed scaling** — tick interval decreases 12ms every 50 points (floor: 85ms)
-- **AI validation** — all Gemini output is sanitised (coordinate clamping, spawn zone filtering, JSON error handling)
+### Analytics Events Tracked
+`game_start`, `game_over` (with score + theme), `generate_level`, `level_generated`, `theme_switch`, `score_saved`
 
 ### Architecture
-
-```
-AISnake.jsx
-├── Sprite library     — drawRock, drawWater, drawPlant, drawSnakeHead, drawEnemy ...
-├── Game engine        — requestAnimationFrame loop, collision, scoring
-├── Gemini integration — callGemini(), parseGeminiLevel()
-├── Procedural gen     — generateDefaultLevel(theme)
-└── React UI           — sidebar panels, D-pad, theme switcher
-```
-
-Game state lives in `useRef` to avoid React re-renders inside the 60fps loop. Only score/lives/theme/phase sync to React state via `syncUi()`.
+- Game state in `useRef` — zero React re-renders inside the 60fps `requestAnimationFrame` loop
+- Only sidebar values (score, lives, phase) sync to React state via `syncUi()`
+- `generateDefaultLevel(theme)` — seeded PRNG procedural fallback so the game is rich before any API call
 
 ---
 
 ## 🚀 Getting Started
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/ai-snake.git
-cd ai-snake
+git clone https://github.com/YOUR_USERNAME/gemslither.git
+cd gemslither
 npm install
-cp .env.example .env   # then add your Gemini API key
+cp .env.example .env   # add your Gemini + Firebase keys
 npm run dev            # → http://localhost:5173
 npm test               # run unit tests
 npm run build          # production build
 ```
 
-Get a free Gemini API key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey).
+---
+
+## 🔑 Environment Variables
+
+Copy `.env.example` → `.env` and fill in:
+
+```
+VITE_GEMINI_API_KEY        — https://aistudio.google.com/apikey
+VITE_FIREBASE_API_KEY      — Firebase Console → Project Settings
+VITE_FIREBASE_DATABASE_URL — Firebase Console → Realtime Database
+VITE_FIREBASE_APP_ID       — Firebase Console → Project Settings
+VITE_FIREBASE_MEASUREMENT_ID — Firebase Console → Analytics
+```
+
+> `.env` is in `.gitignore` — never committed to git.
 
 ---
 
@@ -83,27 +94,29 @@ Get a free Gemini API key at [aistudio.google.com/apikey](https://aistudio.googl
 
 | Input | Action |
 |---|---|
-| `↑ ↓ ← →` / `W A S D` | Move |
+| `WASD` / `↑↓←→` | Move snake |
 | `Space` | Start / Pause / Restart |
-| On-screen D-pad | Mobile touch |
 | Theme buttons | Switch world |
-
----
-
-## 🔐 Security
-
-- API key in `.env`, excluded from git via `.gitignore`
-- All AI responses validated and sanitised before use
-- No user data stored, no backend, no auth beyond the Gemini key
+| On-screen D-pad | Mobile touch |
 
 ---
 
 ## ♿ Accessibility
 
-- Keyboard-first (arrows + WASD + Space)
-- Touch D-pad for mobile
-- High-contrast dark UI
-- All interactive elements keyboard-focusable
+- Canvas has `role="application"` with dynamic `aria-label` (updates with score/phase)
+- `role="status" aria-live="polite"` announces score and lives changes to screen readers
+- All buttons have descriptive `aria-label` attributes
+- `nav` and `header` landmarks for screen reader navigation
+- `focus-visible` outline on all interactive elements
+- `prefers-reduced-motion` support via CSS media query
+
+---
+
+## 🔐 Security
+
+- All API keys in `.env`, excluded from git via `.gitignore`
+- AI responses validated and sanitised (coordinate clamping, spawn zone filtering, JSON error handling)
+- Firebase Database Rules should restrict writes to leaderboard path only (see Firebase Console)
 
 ---
 
@@ -117,17 +130,11 @@ Covers: spawn zone validation, food placement, Gemini response parsing, movement
 
 ---
 
-## 🌟 Google Services Used
-
-**Google Gemini 2.5 Flash** (`gemini-2.5-flash`) via the Google Generative Language API — level generation, enemy placement, theme selection, tactical insights, structured JSON output via `responseMimeType: "application/json"`.
-
----
-
 ## 📁 Project Structure
 
 ```
-ai-snake/
-├── index.html
+gemslither/
+├── index.html              # Google Fonts + GA4 + meta
 ├── vite.config.js
 ├── package.json
 ├── .env.example
@@ -135,19 +142,20 @@ ai-snake/
 ├── README.md
 └── src/
     ├── main.jsx
-    ├── index.css
-    ├── AISnake.jsx
-    └── AISnake.test.js
+    ├── index.css           # focus-visible + prefers-reduced-motion
+    ├── firebase.js         # Firebase Realtime DB + Analytics
+    ├── AISnake.jsx         # Full game — sprites, logic, UI
+    └── AISnake.test.js     # Vitest unit tests
 ```
 
 ---
 
 ## 🔮 Assumptions
 
-- API key is client-side (acceptable for hackathon demo; production would proxy via backend)
-- Grid: 20×16 cells × 36px = 720×576px canvas
-- No score persistence (can extend with localStorage)
-- `thinkingBudget: 0` prioritises output tokens for faster level generation
+- API keys are client-side (appropriate for hackathon demo; production would proxy via backend)
+- Grid: 20×16 × 36px = 720×576px canvas
+- Firebase leaderboard is open-read / open-write (acceptable for hackathon; production needs auth rules)
+- `thinkingBudget: 0` is set on Gemini to maximise output tokens for level generation speed
 
 ---
 

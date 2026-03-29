@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { saveScore, getTopScores, trackEvent, isConfigured as firebaseReady } from "./firebase.js";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const COLS = 20, ROWS = 16, CELL = 36;
@@ -629,10 +630,15 @@ export default function AISnake() {
   const [ui,setUi]=useState({
     score:0,lives:3,speed:"Normal",theme:"jungle",insight:"Navigate carefully!",
     phase:"idle",
-    apiKey: ENV_API_KEY,          // pre-filled from .env if available
-    showKey: !ENV_API_KEY,        // only show input if env key is missing
+    apiKey: ENV_API_KEY,
+    showKey: !ENV_API_KEY,
     levelPrompt:"Create a jungle with rivers and roaming enemies.",
     generating:false,genError:"",
+    // Leaderboard
+    showLeaderboard:false,
+    leaderboard:[],
+    playerName:"",
+    scoreSaved:false,
   });
 
   const syncUi=useCallback((extra={})=>{
@@ -648,12 +654,13 @@ export default function AISnake() {
       ? makeState(p.theme, {obstacles:p.obstacles,waterTiles:p.waterTiles,plantTiles:p.plantTiles,enemies:p.enemies,insight:p.insight})
       : makeState(p.theme);
     frameRef.current=0; lastMoveRef.current=0; tickRef.current=0;
-    syncUi({phase:"idle"});
+    syncUi({phase:"idle", scoreSaved:false});
   },[syncUi]);
 
   const setTheme=useCallback(t=>{
     stateRef.current=makeState(t);
     frameRef.current=0; lastMoveRef.current=0; tickRef.current=0;
+    trackEvent("theme_switch", { theme: t });
     syncUi({theme:t,phase:"idle"});
   },[syncUi]);
 
@@ -661,6 +668,7 @@ export default function AISnake() {
     const{apiKey,levelPrompt,theme}=ui;
     if(!apiKey.trim()){setUi(u=>({...u,showKey:true,genError:"Enter your Gemini API key first."}));return;}
     setUi(u=>({...u,generating:true,genError:""}));
+    trackEvent("generate_level", { theme, prompt_length: levelPrompt.length });
     try{
       const raw=await callGemini(apiKey.trim(),levelPrompt);
       const snake=SPAWN.map(s=>[...s]);
@@ -668,11 +676,35 @@ export default function AISnake() {
       if(!lvl||!lvl.obstacles||lvl.obstacles.length<3) throw new Error("AI returned an empty level — try rephrasing.");
       stateRef.current=makeState(lvl.theme||theme,lvl);
       frameRef.current=0; lastMoveRef.current=0; tickRef.current=0;
+      trackEvent("level_generated", { theme: lvl.theme });
       syncUi({phase:"idle",generating:false,insight:lvl.insight,theme:lvl.theme||theme});
     }catch(e){
       setUi(u=>({...u,generating:false,genError:e.message||"Generation failed."}));
     }
   },[ui,syncUi]);
+
+  // ── Leaderboard helpers ───────────────────────────────────────────────────
+  const lastSavedNameRef = useRef(""); // persists across renders for rank highlight
+
+  const loadLeaderboard = useCallback(async () => {
+    const rows = await getTopScores();
+    setUi(u => ({ ...u, leaderboard: rows, showLeaderboard: true }));
+  }, []);
+
+  const handleSaveScore = useCallback(async () => {
+    const { playerName } = ui;
+    const s = stateRef.current;
+    if (!playerName.trim()) return;
+    setUi(u => ({ ...u, scoreSaved: "saving" }));
+    await saveScore(playerName.trim(), s.score, s.theme);
+    trackEvent("score_saved", { score: s.score, theme: s.theme });
+    lastSavedNameRef.current = playerName.trim();
+    // Wait for Firebase asia-southeast1 write to propagate
+    await new Promise(res => setTimeout(res, 1500));
+    const rows = await getTopScores();
+    console.log("[GemSlither] Leaderboard fetched:", rows.length, "entries", rows.map(r=>r.name+":"+r.score));
+    setUi(u => ({ ...u, scoreSaved: true, leaderboard: rows, showLeaderboard: true }));
+  }, [ui]);
 
   // ── Game loop ───────────────────────────────────────────────────────────────
   useEffect(()=>{
@@ -687,21 +719,21 @@ export default function AISnake() {
       s.ps.update(); s.ps.draw(ctx);
       if(!s.started){
         ctx.fillStyle="rgba(0,0,0,0.46)"; ctx.fillRect(0,0,W,H);
-        ctx.textAlign="center"; ctx.fillStyle="#00ff88"; ctx.font="bold 14px 'Courier New',monospace";
+        ctx.textAlign="center"; ctx.fillStyle="#00ff88"; ctx.font="bold 14px 'Share Tech Mono','Courier New',monospace";
         ctx.globalAlpha=0.55+0.45*Math.sin(f*0.07); ctx.fillText("PRESS SPACE TO START",W/2,H/2+6); ctx.globalAlpha=1;
         return;
       }
       if(s.paused){
         ctx.fillStyle="rgba(0,0,0,0.48)"; ctx.fillRect(0,0,W,H);
-        ctx.textAlign="center"; ctx.fillStyle="#00aaff"; ctx.font="bold 20px 'Courier New',monospace"; ctx.fillText("PAUSED",W/2,H/2+7);
+        ctx.textAlign="center"; ctx.fillStyle="#00aaff"; ctx.font="bold 20px 'Share Tech Mono','Courier New',monospace"; ctx.fillText("PAUSED",W/2,H/2+7);
         return;
       }
       if(s.over){
         ctx.fillStyle="rgba(0,0,0,0.65)"; ctx.fillRect(0,0,W,H);
         ctx.textAlign="center";
-        ctx.fillStyle="#ff4444"; ctx.font="bold 30px 'Courier New',monospace"; ctx.fillText("GAME OVER",W/2,H/2-16);
-        ctx.fillStyle="#ccc"; ctx.font="16px 'Courier New',monospace"; ctx.fillText("Score: "+s.score,W/2,H/2+14);
-        ctx.fillStyle="#888"; ctx.font="12px 'Courier New',monospace"; ctx.fillText("Press SPACE to restart",W/2,H/2+42);
+        ctx.fillStyle="#ff4444"; ctx.font="bold 30px 'Share Tech Mono','Courier New',monospace"; ctx.fillText("GAME OVER",W/2,H/2-16);
+        ctx.fillStyle="#ccc"; ctx.font="16px 'Share Tech Mono','Courier New',monospace"; ctx.fillText("Score: "+s.score,W/2,H/2+14);
+        ctx.fillStyle="#888"; ctx.font="12px 'Share Tech Mono','Courier New',monospace"; ctx.fillText("Press SPACE to restart",W/2,H/2+42);
         return;
       }
       if(ts-lastMoveRef.current>s.speed){
@@ -713,7 +745,11 @@ export default function AISnake() {
           ||s.enemies.some(e=>e.pos[0]===nh[0]&&e.pos[1]===nh[1]);
         if(hit){
           s.ps.emit(h[0],h[1],"#ff4444",16); s.lives--;
-          if(s.lives<=0){s.over=true;syncUi({phase:"over"});}
+          if(s.lives<=0){
+            s.over=true;
+            trackEvent("game_over", { score: s.score, theme: s.theme });
+            syncUi({phase:"over"});
+          }
           else{s.snake=SPAWN.map(p=>[...p]);s.dir=[1,0];s.nextDir=[1,0];s.food=placeFood(s.snake,s.obstacles);syncUi();}
           return;
         }
@@ -741,10 +777,18 @@ export default function AISnake() {
 
   useEffect(()=>{
     const onKey=e=>{
+      // ── Never steal keypresses from text inputs ──────────────────────────
+      const tag = document.activeElement?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+
       const s=stateRef.current;
       if(e.key===" "||e.key==="Enter"){
         e.preventDefault();
-        if(!s.started){s.started=true;syncUi({phase:"playing"});}
+        if(!s.started){
+          s.started=true;
+          trackEvent("game_start", { theme: s.theme });
+          syncUi({phase:"playing"});
+        }
         else if(s.over)doReset(false);
         else s.paused=!s.paused;
         return;
@@ -840,7 +884,7 @@ export default function AISnake() {
       }}>
 
       {/* ── TITLE BAR ── */}
-      <div style={{
+      <header role="banner" style={{
         padding: "8px 40px",
         background: "rgba(3,12,22,0.98)",
         border: "1px solid rgba(0,170,255,0.35)",
@@ -848,16 +892,17 @@ export default function AISnake() {
         boxShadow: "0 0 32px rgba(0,170,255,0.18), 0 0 0 1px rgba(0,0,0,0.8), inset 0 1px 0 rgba(0,170,255,0.12)",
         textAlign: "center",
       }}>
-        <div style={{
-          fontSize: 28, fontWeight: 900, letterSpacing: 8,
-          color: "#ffffff",
+        <h1 style={{
+          fontSize: 28, fontWeight: 900, letterSpacing: 8, margin: 0,
+          color: "#ffffff", fontFamily: "'Orbitron','Courier New',monospace",
           textShadow: "0 0 20px #00aaff, 0 0 50px rgba(0,150,255,0.3)",
-        }}>GemSlither</div>
+        }}>GemSlither</h1>
         <div style={{
           fontSize: 8, letterSpacing: 4, color: "#1a6688",
           marginTop: -2, textTransform: "uppercase",
+          fontFamily:"'Share Tech Mono','Courier New',monospace",
         }}>Slither. Sparkle. Survive.</div>
-      </div>
+      </header>
 
       {/* ── THREE COLUMNS ── */}
       <div style={{ display: "flex", gap: 10, alignItems: "flex-start", width: "100%" }}>
@@ -975,11 +1020,29 @@ export default function AISnake() {
           ].map((s2,i)=>(
             <div key={i} style={{position:"absolute",width:14,height:14,zIndex:2,...s2}}/>
           ))}
-          <canvas ref={canvasRef} width={W} height={H} style={{ display: "block" }} />
+          {/* Screen reader live score announcer */}
+          <div
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+            style={{ position:"absolute", width:1, height:1, overflow:"hidden", clip:"rect(0,0,0,0)", whiteSpace:"nowrap" }}
+          >
+            Score: {ui.score}. Lives: {ui.lives}. Theme: {ui.theme}.
+          </div>
+
+          <canvas
+            ref={canvasRef}
+            width={W}
+            height={H}
+            role="application"
+            aria-label={`GemSlither game board. ${ui.phase === "over" ? "Game over. Score: " + ui.score : ui.phase === "playing" ? "Game in progress. Score: " + ui.score : "Press Space to start."}`}
+            tabIndex={0}
+            style={{ display: "block" }}
+          />
         </div>
 
         {/* RIGHT PANEL */}
-        <div style={panelStyle}>
+        <div style={panelStyle} role="complementary" aria-label="Game status panel">
           <div style={panelLabel}>Adaptive Game State</div>
 
           {/* Stats */}
@@ -1055,56 +1118,99 @@ export default function AISnake() {
               ["SPACE (dead)", "Restart"],
               ["Theme buttons", "Switch world"],
             ].map(([k, v]) => (
-              <div key={k} style={{
-                display: "flex", justifyContent: "space-between",
-                marginBottom: 6, alignItems: "center", gap: 6,
-              }}>
-                <span style={{
-                  color: "#aaddff",
-                  fontSize: 10,
-                  background: "rgba(0,60,110,0.45)",
-                  padding: "3px 7px", borderRadius: 4,
-                  border: "1px solid rgba(0,130,200,0.35)",
-                  whiteSpace: "nowrap",
-                  flexShrink: 0,
-                  fontWeight: 700,
-                }}>{k}</span>
-                <span style={{ color: "#88aacc", fontSize: 10, textAlign: "right" }}>{v}</span>
+              <div key={k} style={{ display:"flex", justifyContent:"space-between", marginBottom:6, alignItems:"center", gap:6 }}>
+                <span style={{ color:"#aaddff", fontSize:10, background:"rgba(0,60,110,0.45)", padding:"3px 7px", borderRadius:4, border:"1px solid rgba(0,130,200,0.35)", whiteSpace:"nowrap", flexShrink:0, fontWeight:700 }}>{k}</span>
+                <span style={{ color:"#88aacc", fontSize:10, textAlign:"right" }}>{v}</span>
               </div>
             ))}
           </div>
+
+          {/* Leaderboard button — shown always */}
+          {firebaseReady && (
+            <button
+              aria-label="View global leaderboard"
+              onClick={loadLeaderboard}
+              style={{ ...S.subtle, marginTop: 6, fontSize: 10, padding: "6px 0" }}
+            >
+              🏆 LEADERBOARD
+            </button>
+          )}
+
+          {/* Save score — shown after game over */}
+          {ui.phase === "over" && firebaseReady && !ui.scoreSaved && (
+            <div style={{ marginTop: 6, display:"flex", flexDirection:"column", gap:6 }}>
+              <div style={{ color:"#aaddff", fontSize:10, textAlign:"center", letterSpacing:1 }}>
+                🏆 Save your score
+              </div>
+              <input
+                type="text"
+                placeholder="Enter your name…"
+                maxLength={20}
+                autoFocus
+                value={ui.playerName}
+                onChange={e => setUi(u => ({ ...u, playerName: e.target.value }))}
+                onKeyDown={e => { if(e.key==="Enter" && ui.playerName.trim()) handleSaveScore(); }}
+                aria-label="Enter your name for the leaderboard"
+                style={{
+                  width:"100%", boxSizing:"border-box",
+                  background:"rgba(0,20,40,0.95)",
+                  color:"#ffffff",
+                  border:"1.5px solid rgba(0,170,255,0.7)",
+                  borderRadius:6, padding:"8px 10px",
+                  fontSize:12, fontFamily:"'Share Tech Mono','Courier New',monospace",
+                  outline:"none",
+                  boxShadow:"0 0 12px rgba(0,170,255,0.35), inset 0 0 8px rgba(0,100,200,0.15)",
+                  caretColor:"#00aaff",
+                }}
+              />
+              <button
+                aria-label="Save score to leaderboard"
+                onClick={handleSaveScore}
+                disabled={!ui.playerName.trim()}
+                style={{
+                  ...S.primary, padding:"8px 0", fontSize:11,
+                  opacity: ui.playerName.trim() ? 1 : 0.4,
+                  cursor: ui.playerName.trim() ? "pointer" : "not-allowed",
+                }}
+              >
+                💾  SAVE SCORE
+              </button>
+            </div>
+          )}
+          {ui.scoreSaved === "saving" && (
+            <div style={{ marginTop:4, color:"#aaddff", fontSize:10, textAlign:"center" }}>⏳ Saving…</div>
+          )}
+          {ui.scoreSaved === true && (
+            <div style={{ marginTop:4, color:"#44dd88", fontSize:10, textAlign:"center", letterSpacing:1 }}>✓ Score saved!</div>
+          )}
+
         </div>
       </div>
       {/* end three columns */}
 
-      {/* ── D-PAD + CONTROLS ── */}
-      <div style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 20,
-        marginTop: 4,
-        padding: "10px 20px",
-        background: "rgba(4,12,22,0.8)",
-        border: "1px solid rgba(0,100,160,0.2)",
-        borderRadius: 12,
+      {/* ── D-PAD + ACTION BUTTONS ── */}
+      <nav aria-label="Game controls" style={{
+        display: "flex", alignItems: "center", gap: 20, marginTop: 4,
+        padding: "10px 20px", background: "rgba(4,12,22,0.8)",
+        border: "1px solid rgba(0,100,160,0.2)", borderRadius: 12,
         boxShadow: "0 4px 20px rgba(0,0,0,0.5)",
       }}>
         {/* D-PAD */}
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-          <DBtn label="↑" onClick={() => handleDpad("UP")} />
-          <div style={{ display: "flex", gap: 4 }}>
-            <DBtn label="←" onClick={() => handleDpad("LEFT")} />
-            <DBtn label="↓" onClick={() => handleDpad("DOWN")} />
-            <DBtn label="→" onClick={() => handleDpad("RIGHT")} />
+        <div role="group" aria-label="Directional controls" style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:4 }}>
+          <DBtn label="↑" ariaLabel="Move up"    onClick={() => handleDpad("UP")} />
+          <div style={{ display:"flex", gap:4 }}>
+            <DBtn label="←" ariaLabel="Move left"  onClick={() => handleDpad("LEFT")} />
+            <DBtn label="↓" ariaLabel="Move down"  onClick={() => handleDpad("DOWN")} />
+            <DBtn label="→" ariaLabel="Move right" onClick={() => handleDpad("RIGHT")} />
           </div>
         </div>
 
-        {/* Divider */}
-        <div style={{ width: 1, height: 80, background: "rgba(0,100,160,0.2)" }} />
+        <div style={{ width:1, height:80, background:"rgba(0,100,160,0.2)" }} aria-hidden="true" />
 
         {/* Action buttons */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
           <button
+            aria-label="Restart game"
             onClick={() => {
               const s = stateRef.current;
               if (s.over || !s.started) doReset(false);
@@ -1115,9 +1221,10 @@ export default function AISnake() {
             ↺  RESTART
           </button>
           <button
+            aria-label={ui.phase === "playing" && !stateRef.current?.paused ? "Pause game" : "Resume game"}
             onClick={() => {
               const s = stateRef.current;
-              if (!s.started) { s.started = true; syncUi({ phase: "playing" }); }
+              if (!s.started) { s.started = true; trackEvent("game_start", { theme: s.theme }); syncUi({ phase:"playing" }); }
               else s.paused = !s.paused;
             }}
             style={S.pause}
@@ -1125,8 +1232,122 @@ export default function AISnake() {
             {ui.phase === "playing" && !stateRef.current?.paused ? "⏸  PAUSE" : "▶  RESUME"}
           </button>
         </div>
-      </div>
-      {/* end D-pad bar */}
+      </nav>
+
+      {/* ── LEADERBOARD MODAL ── */}
+      {ui.showLeaderboard && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Global leaderboard"
+          style={{
+            position:"fixed", inset:0, background:"rgba(0,0,0,0.78)",
+            display:"flex", alignItems:"center", justifyContent:"center", zIndex:100,
+          }}
+          onClick={e => { if(e.target === e.currentTarget) setUi(u=>({...u,showLeaderboard:false})); }}
+        >
+          <div style={{
+            background:"rgba(4,14,26,0.99)", border:"1px solid rgba(0,170,255,0.4)",
+            borderRadius:14, padding:"24px 28px", minWidth:360, maxWidth:440,
+            boxShadow:"0 0 50px rgba(0,120,255,0.3), 0 0 0 1px rgba(0,0,0,0.8)",
+          }}>
+            {/* Header */}
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
+              <h2 style={{ color:"#00ccff", fontSize:16, fontWeight:700, letterSpacing:2, margin:0, fontFamily:"'Orbitron','Courier New',monospace" }}>
+                🏆 LEADERBOARD
+              </h2>
+              <button
+                aria-label="Close leaderboard"
+                onClick={() => setUi(u=>({...u,showLeaderboard:false}))}
+                style={{ background:"none", border:"none", color:"#446688", fontSize:20, cursor:"pointer", padding:"2px 8px", lineHeight:1 }}
+              >✕</button>
+            </div>
+
+            {/* Current player's rank summary */}
+            {lastSavedNameRef.current && ui.leaderboard.length > 0 && (() => {
+              const myName = lastSavedNameRef.current.toLowerCase();
+              const myRank = ui.leaderboard.findIndex(r =>
+                r.name.toLowerCase() === myName
+              );
+              if (myRank === -1) return null;
+              return (
+                <div style={{
+                  marginBottom:16, padding:"8px 14px",
+                  background:"rgba(0,100,60,0.25)",
+                  border:"1px solid rgba(0,220,120,0.4)",
+                  borderRadius:8,
+                  display:"flex", alignItems:"center", justifyContent:"space-between",
+                }}>
+                  <span style={{ color:"#44ee99", fontSize:11, fontWeight:700 }}>
+                    Your rank:
+                    <span style={{ fontSize:18, marginLeft:8 }}>
+                      {myRank===0?"🥇":myRank===1?"🥈":myRank===2?"🥉":`#${myRank+1}`}
+                    </span>
+                  </span>
+                  <span style={{ color:"#00ff88", fontSize:14, fontWeight:700 }}>
+                    {ui.leaderboard[myRank].score} pts
+                  </span>
+                </div>
+              );
+            })()}
+
+            {/* Table */}
+            {ui.leaderboard.length === 0 ? (
+              <div style={{ color:"#446688", fontSize:12, textAlign:"center", padding:"20px 0" }}>No scores yet. Be the first!</div>
+            ) : (
+              <table style={{ width:"100%", borderCollapse:"collapse" }} aria-label="Top 10 scores">
+                <thead>
+                  <tr>
+                    {["#","Player","Score","Theme"].map(h=>(
+                      <th key={h} style={{ color:"#336688", fontSize:10, fontWeight:700, letterSpacing:1, textAlign:"left", paddingBottom:8, borderBottom:"1px solid rgba(0,100,160,0.2)" }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {ui.leaderboard.map((row, i) => {
+                    const isMe = lastSavedNameRef.current &&
+                      row.name.toLowerCase() === lastSavedNameRef.current.toLowerCase();
+                    return (
+                      <tr key={row.id} style={{
+                        background: isMe
+                          ? "rgba(0,180,100,0.15)"
+                          : i%2===0?"rgba(0,20,40,0.3)":"transparent",
+                        border: isMe ? "1px solid rgba(0,220,120,0.35)" : "1px solid transparent",
+                        borderRadius: isMe ? 6 : 0,
+                        transition:"background 0.2s",
+                      }}>
+                        <td style={{ color:i===0?"#ffcc00":i===1?"#aaaaaa":i===2?"#cc8844":isMe?"#44ee99":"#446688", fontSize:11, padding:"7px 6px", fontWeight:700 }}>
+                          {i===0?"🥇":i===1?"🥈":i===2?"🥉":`${i+1}`}
+                        </td>
+                        <td style={{ padding:"7px 6px" }}>
+                          <span style={{ color: isMe?"#88ffcc":"#aaccee", fontSize:11, fontWeight: isMe?700:400 }}>
+                            {row.name}
+                          </span>
+                          {isMe && (
+                            <span style={{
+                              marginLeft:6, fontSize:8, fontWeight:700,
+                              color:"#00cc66", background:"rgba(0,150,80,0.25)",
+                              border:"1px solid rgba(0,200,100,0.4)",
+                              padding:"1px 5px", borderRadius:3, letterSpacing:1,
+                              verticalAlign:"middle",
+                            }}>YOU</span>
+                          )}
+                        </td>
+                        <td style={{ color: isMe?"#00ff88":"#44cc88", fontSize:12, fontWeight:700, padding:"7px 6px" }}>{row.score}</td>
+                        <td style={{ color:"#446688", fontSize:10, padding:"7px 6px", textTransform:"capitalize" }}>{row.theme}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+
+            <div style={{ marginTop:16, fontSize:9, color:"#1a3344", textAlign:"center", letterSpacing:1 }}>
+              POWERED BY GOOGLE FIREBASE REALTIME DATABASE
+            </div>
+          </div>
+        </div>
+      )}
 
       </div>
       {/* end wrapRef inner */}
@@ -1135,26 +1356,23 @@ export default function AISnake() {
   );
 }
 
-function DBtn({ label, onClick }) {
+function DBtn({ label, ariaLabel, onClick }) {
   return (
     <button
       onClick={onClick}
+      aria-label={ariaLabel || label}
       onMouseDown={e => e.currentTarget.style.transform = "scale(0.88)"}
       onMouseUp={e => e.currentTarget.style.transform = "scale(1)"}
       onTouchStart={e => { e.preventDefault(); e.currentTarget.style.transform = "scale(0.88)"; onClick(); }}
       onTouchEnd={e => e.currentTarget.style.transform = "scale(1)"}
       style={{
-        width: 46, height: 46,
-        background: "linear-gradient(180deg, rgba(10,30,60,0.95), rgba(4,12,28,0.95))",
-        color: "#55aadd",
-        border: "1px solid rgba(0,120,200,0.35)",
-        borderRadius: 8,
-        fontSize: 18,
-        cursor: "pointer",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        boxShadow: "0 2px 12px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.05)",
-        transition: "transform 0.08s",
-        fontFamily: "inherit",
+        width:46, height:46,
+        background:"linear-gradient(180deg, rgba(10,30,60,0.95), rgba(4,12,28,0.95))",
+        color:"#55aadd", border:"1px solid rgba(0,120,200,0.35)",
+        borderRadius:8, fontSize:18, cursor:"pointer",
+        display:"flex", alignItems:"center", justifyContent:"center",
+        boxShadow:"0 2px 12px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.05)",
+        transition:"transform 0.08s", fontFamily:"inherit",
       }}
     >
       {label}

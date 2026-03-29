@@ -3,8 +3,35 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>GemSlither — Slither. Sparkle. Survive</title>
-    <style>html,body{background:#02080c;margin:0;padding:0;}</style>
+    <meta name="description" content="GemSlither — AI-powered Snake game. Describe any level, Gemini 2.5 Flash builds it." />
+    <meta name="theme-color" content="#02080c" />
+    <title>GemSlither — Slither. Sparkle. Survive.</title>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
+
+    <!-- Google Analytics GA4 -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-PLACEHOLDER"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){ dataLayer.push(arguments); }
+      gtag('js', new Date());
+      gtag('config', 'G-PLACEHOLDER');
+    </script>
+
+    <style>
+      html, body { background: #02080c; margin: 0; padding: 0; }
+      *:focus-visible {
+        outline: 2px solid #00aaff;
+        outline-offset: 3px;
+        border-radius: 4px;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+      }
+    </style>
   </head>
   <body style="background:#02080c;margin:0;padding:0;">
     <div id="root"></div>

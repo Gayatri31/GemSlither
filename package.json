@@ -1,5 +1,5 @@
 {
-  "name": "ai-snake",
+  "name": "gemslither",
   "version": "1.0.0",
   "private": true,
   "type": "module",
@@ -11,6 +11,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "firebase": "^10.12.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
