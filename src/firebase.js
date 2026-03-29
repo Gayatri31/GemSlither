@@ -74,7 +74,6 @@ export async function getTopScores() {
     if (!data) return [];
 
     const all = Object.entries(data).map(([id, val]) => ({ id, ...val }));
-    console.log("[GemSlither] REST entries:", all.length, all.map(r => r.name + ":" + r.score));
 
     // Best score per player
     const best = {};

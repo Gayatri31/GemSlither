@@ -702,7 +702,6 @@ export default function AISnake() {
     // Wait for Firebase asia-southeast1 write to propagate
     await new Promise(res => setTimeout(res, 1500));
     const rows = await getTopScores();
-    console.log("[GemSlither] Leaderboard fetched:", rows.length, "entries", rows.map(r=>r.name+":"+r.score));
     setUi(u => ({ ...u, scoreSaved: true, leaderboard: rows, showLeaderboard: true }));
   }, [ui]);
 
