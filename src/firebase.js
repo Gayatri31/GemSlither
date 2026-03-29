@@ -1,19 +1,21 @@
 /**
- * firebase.js
- * Google Firebase integration for GemSlither
+ * firebase.js — Google Firebase integration for GemSlither
  *
- * Services used:
- *   - Firebase Realtime Database  (leaderboard persistence)
- *   - Firebase Analytics          (in-game event tracking)
- *   - Google Analytics GA4        (page-level analytics via gtag)
+ * Google Services integrated:
+ *   1. Firebase Realtime Database  — global leaderboard
+ *   2. Firebase Analytics          — in-game event tracking
+ *   3. Firebase Performance        — automatic performance monitoring
+ *   4. Google Analytics GA4        — page analytics via gtag.js
+ *   5. Google Fonts                — Orbitron + Share Tech Mono (index.html)
+ *   6. Google Gemini 2.5 Flash     — AI level generation (AISnake.jsx)
  */
 
-import { initializeApp }        from "firebase/app";
-import { getDatabase, ref, push } from "firebase/database";
-import { getAnalytics, logEvent, isSupported } from "firebase/analytics";
-import { getPerformance }        from "firebase/performance";
+import { initializeApp }               from "firebase/app";
+import { getDatabase, ref, push }      from "firebase/database";
+import { getAnalytics, logEvent }      from "firebase/analytics";
+import { getPerformance, trace }       from "firebase/performance";
 
-// ── Config (injected from .env at build time, never hardcoded) ────────────────
+// ── Config ────────────────────────────────────────────────────────────────────
 const firebaseConfig = {
   apiKey:            import.meta.env.VITE_FIREBASE_API_KEY        || "",
   authDomain:        import.meta.env.VITE_FIREBASE_AUTH_DOMAIN    || "",
@@ -25,127 +27,96 @@ const firebaseConfig = {
   measurementId:     import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || "",
 };
 
-/** True only when all required config values are present */
 export const isConfigured = !!(
   firebaseConfig.apiKey &&
   firebaseConfig.databaseURL &&
   firebaseConfig.appId
 );
 
-// ── Initialise Firebase services ──────────────────────────────────────────────
+// ── Initialise all Firebase services eagerly ──────────────────────────────────
 let app         = null;
 let db          = null;
 let analytics   = null;
-let performance = null;
+let perf        = null;
 
 if (isConfigured) {
-  try {
-    app = initializeApp(firebaseConfig);
-    db  = getDatabase(app);
-
-    // Firebase Analytics — initialise only when supported by the browser
-    isSupported().then(supported => {
-      if (!supported) return;
-      try {
-        analytics = getAnalytics(app);
-      } catch { /* non-critical */ }
-    });
-
-    // Firebase Performance Monitoring — Google Service #5
-    try {
-      performance = getPerformance(app);
-    } catch { /* non-critical */ }
-
-  } catch (err) {
-    // Fail silently — game works without Firebase
-    if (import.meta.env.DEV) console.warn("GemSlither: Firebase init failed", err.message);
+  try { app = initializeApp(firebaseConfig); }        catch { /* silent */ }
+  if (app) {
+    try { db        = getDatabase(app); }             catch { /* silent */ }
+    try { analytics = getAnalytics(app); }            catch { /* silent */ }
+    try { perf      = getPerformance(app); }          catch { /* silent */ }
   }
 }
 
-// ── Input sanitisation helper ────────────────────────────────────────────────
-/**
- * Sanitise player name: strip HTML tags, trim, enforce max length.
- * @param {string} name
- * @returns {string}
- */
+// ── Input sanitisation ────────────────────────────────────────────────────────
 function sanitiseName(name) {
   return String(name)
-    .replace(/<[^>]*>/g, "")   // strip any HTML tags
-    .replace(/[^\w\s\-_.]/g, "") // allow only safe characters
+    .replace(/<[^>]*>/g, "")
+    .replace(/[^\w\s\-_.]/g, "")
     .trim()
     .slice(0, 20) || "Player";
 }
 
-/**
- * Validate score is a non-negative integer.
- * @param {number} score
- * @returns {number}
- */
 function sanitiseScore(score) {
   const n = Math.floor(Number(score));
-  return Number.isFinite(n) && n >= 0 ? n : 0;
+  return Number.isFinite(n) && n >= 0 ? Math.min(n, 10000) : 0;
 }
 
 // ── Leaderboard ───────────────────────────────────────────────────────────────
 
 /**
- * Save a player score to Firebase Realtime Database.
- * Uses REST API (POST to .json endpoint) — works with public-read/write rules
- * and does not require authentication for this hackathon demo.
- *
- * Security note: In production, replace ".write": true with authenticated
- * writes using Firebase Auth. The current open rules are intentional for the
- * hackathon demo to allow cross-player leaderboard participation.
- *
- * @param {string} playerName
- * @param {number} score
- * @param {string} theme
+ * Save a validated score entry to Firebase Realtime Database.
+ * Uses REST POST — works reliably across all environments.
+ * Security: server-side validation rules enforced in database.rules.json.
  */
 export async function saveScore(playerName, score, theme) {
   if (!isConfigured) return;
 
+  const VALID_THEMES = ["jungle", "volcanic", "crystal", "desert"];
   const entry = {
     name:      sanitiseName(playerName),
     score:     sanitiseScore(score),
-    theme:     ["jungle","volcanic","crystal","desert"].includes(theme) ? theme : "jungle",
+    theme:     VALID_THEMES.includes(theme) ? theme : "jungle",
     timestamp: Date.now(),
   };
 
+  // Track save performance
+  let t = null;
+  try { if (perf) { t = trace(perf, "save_score"); t.start(); } } catch { /* silent */ }
+
   try {
-    const url = `${firebaseConfig.databaseURL}/leaderboard.json`;
-    const res = await fetch(url, {
+    const res = await fetch(`${firebaseConfig.databaseURL}/leaderboard.json`, {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify(entry),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  } catch (err) {
-    // SDK fallback
-    if (db) {
-      try { await push(ref(db, "leaderboard"), entry); } catch { /* silent */ }
-    }
+  } catch {
+    if (db) { try { await push(ref(db, "leaderboard"), entry); } catch { /* silent */ } }
+  } finally {
+    try { if (t) t.stop(); } catch { /* silent */ }
   }
 }
 
 /**
- * Fetch top 10 unique-player scores from Firebase.
- * Deduplicates by player name (case-insensitive), keeping personal best.
- *
- * @returns {Promise<Array<{id,name,score,theme,timestamp}>>}
+ * Fetch top 10 unique-player scores (best score per player, deduplicated).
+ * Uses REST GET — no auth token required with current database rules.
  */
 export async function getTopScores() {
   if (!isConfigured) return [];
 
+  let t = null;
+  try { if (perf) { t = trace(perf, "get_top_scores"); t.start(); } } catch { /* silent */ }
+
   try {
-    const url = `${firebaseConfig.databaseURL}/leaderboard.json`;
-    const res = await fetch(url);
+    const res = await fetch(`${firebaseConfig.databaseURL}/leaderboard.json`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if (!data || typeof data !== "object") return [];
 
     const all = Object.entries(data).map(([id, val]) => ({ id, ...val }));
 
-    // Deduplicate — keep each player's best score only
+    // Deduplicate — keep personal best per player
     const best = {};
     all.forEach(entry => {
       const key = sanitiseName(entry.name || "").toLowerCase();
@@ -158,25 +129,30 @@ export async function getTopScores() {
 
   } catch {
     return [];
+  } finally {
+    try { if (t) t.stop(); } catch { /* silent */ }
   }
 }
 
 // ── Analytics ─────────────────────────────────────────────────────────────────
 
 /**
- * Track a named event via Firebase Analytics and GA4.
- * Fails silently — analytics must never break the game.
+ * Track a named event in both Firebase Analytics and Google Analytics GA4.
+ * Fails silently — analytics must never interrupt gameplay.
  *
- * @param {string} eventName  Snake_case event name
- * @param {Object} params     Additional event parameters
+ * @param {string} eventName - snake_case event identifier
+ * @param {Object} params    - additional event parameters
  */
 export function trackEvent(eventName, params = {}) {
-  // Firebase Analytics
+  // Firebase Analytics (Google Service #2)
   if (analytics) {
     try { logEvent(analytics, eventName, params); } catch { /* silent */ }
   }
-  // Google Analytics GA4 (gtag loaded in index.html)
+  // Google Analytics GA4 via gtag.js (Google Service #4)
   if (typeof window !== "undefined" && typeof window.gtag === "function") {
     try { window.gtag("event", eventName, params); } catch { /* silent */ }
   }
 }
+
+// Export perf for external trace usage if needed
+export { perf as firebasePerf };
