@@ -3,22 +3,31 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="GemSlither — AI-powered Snake game. Describe any level, Gemini 2.5 Flash builds it." />
+    <meta name="description" content="GemSlither — AI-powered Snake game. Describe any level, Gemini 2.5 Flash builds it instantly." />
     <meta name="theme-color" content="#02080c" />
+    <meta name="robots" content="index, follow" />
+
+    <!-- Security: Content Security Policy -->
+    <meta http-equiv="X-Content-Type-Options" content="nosniff" />
+    <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin" />
+
     <title>GemSlither — Slither. Sparkle. Survive.</title>
 
-    <!-- Google Fonts -->
+    <!-- Google Fonts (Google Service) -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
 
-    <!-- Google Analytics GA4 -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-PLACEHOLDER"></script>
+    <!-- Google Analytics GA4 (Google Service) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-3C4XTYN7RR"></script>
     <script>
       window.dataLayer = window.dataLayer || [];
       function gtag(){ dataLayer.push(arguments); }
       gtag('js', new Date());
-      gtag('config', 'G-PLACEHOLDER');
+      gtag('config', 'G-3C4XTYN7RR', {
+        anonymize_ip: true,
+        cookie_flags: 'SameSite=None;Secure'
+      });
     </script>
 
     <style>
@@ -29,7 +38,10 @@
         border-radius: 4px;
       }
       @media (prefers-reduced-motion: reduce) {
-        *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+        *, *::before, *::after {
+          animation-duration: 0.01ms !important;
+          transition-duration: 0.01ms !important;
+        }
       }
     </style>
   </head>

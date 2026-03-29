@@ -1,0 +1,11 @@
+{
+  "rules": {
+    "leaderboard": {
+      ".read": true,
+      ".write": true,
+      "$entry": {
+        ".validate": "newData.hasChildren(['name','score','theme','timestamp']) && newData.child('name').isString() && newData.child('name').val().length <= 20 && newData.child('score').isNumber() && newData.child('score').val() >= 0 && newData.child('score').val() <= 10000 && newData.child('theme').isString() && newData.child('timestamp').isNumber()"
+      }
+    }
+  }
+}
